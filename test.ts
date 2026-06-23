@@ -1,1 +1,4 @@
-// テストはここに来ます。このパッケージが拡張機能として使用されるときにはコンパイルされません。
+// 動作確認用テスト
+SmartHome.lightOn()
+basic.pause(1000)
+SmartHome.lightOff()

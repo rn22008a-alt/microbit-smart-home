@@ -1,25 +1,21 @@
 {
-    "name": "スマートホーム",
-    "description": "",
+    "name": "SmartHome",
+    "description": "小学生向けスマートホーム教材 for micro:bit",
+    "license": "MIT",
     "dependencies": {
         "core": "*",
-        "radio": "*",
-        "microphone": "*"
+        "microbit": "*"
     },
     "files": [
-        "main.blocks",
-        "main.ts",
-        "README.md"
+        "custom.ts",
+        "test.ts"
     ],
     "testFiles": [
         "test.ts"
     ],
-    "targetVersions": {
-        "target": "8.0.22",
-        "targetId": "microbit"
-    },
+    "preferredEditor": "tsprj",
     "supportedTargets": [
         "microbit"
     ],
-    "preferredEditor": "blocksprj"
+    "version": "0.0.1"
 }
