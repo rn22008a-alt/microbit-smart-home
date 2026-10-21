@@ -1,21 +1,21 @@
 {
-    "name": "SmartHome",
-    "description": "小学生向けスマートホーム教材 for micro:bit",
+    "name": "smarthome-ja",
+    "description": "ElecFreaks Smart Home Kit のブロックを日本語化したもの（元：tinkertanker/pxt-smarthome）＋レインボーLED・ディスプレイの日本語ブロック。小学生向け",
     "license": "MIT",
     "dependencies": {
         "core": "*",
-        "microbit": "*"
+        "ws2812b": "github:microsoft/pxt-ws2812b#v0.1.2"
     },
     "files": [
-        "custom.ts",
-        "test.ts"
+        "README.md",
+        "custom.ts"
     ],
     "testFiles": [
         "test.ts"
     ],
-    "preferredEditor": "tsprj",
     "supportedTargets": [
         "microbit"
     ],
-    "version": "0.0.1"
+    "preferredEditor": "tsprj",
+    "version": "0.1.0"
 }
