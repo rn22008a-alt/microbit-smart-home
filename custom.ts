@@ -477,7 +477,7 @@ namespace smarthome {
 // ここから下は、プリントの言葉に合わせて作った自作ブロック
 //   レインボーLED / ディスプレイ / ドア / ファン / センサー
 // 「〇〇の設定」ブロック（各カテゴリの「その他」の中）で、
-//  ピン・角度・速さ・基準の値をあとから変えられます。
+//  角度・速さ・基準の値をあとから変えられます。ピンは各ブロックで選びます。
 //  ここに書いてある数（初期値）を書きかえてもOKです。
 // =====================================================================
 
@@ -516,12 +516,13 @@ enum HomeFanSpeed {
 // ---------------------------------------------------------------------
 //% weight=9 color=#2699BF icon="\uf0eb" block="レインボーLED"
 namespace rainbowled {
-    let ledPin = DigitalPin.P4      // 初期値：ピン P4
     let brightness = 50             // 初期値：明るさ 50（0〜100）
     let current = 0
+    let lastPin = DigitalPin.P4
 
-    function send(rgb: number): void {
+    function send(pin: DigitalPin, rgb: number): void {
         led.enable(false)   // P4 は本体の画面と共用なので、画面をオフにしておく
+        lastPin = pin
         const r = ((rgb >> 16) & 0xFF) * brightness / 100
         const g = ((rgb >> 8) & 0xFF) * brightness / 100
         const b = (rgb & 0xFF) * brightness / 100
@@ -529,7 +530,7 @@ namespace rainbowled {
         buf[0] = Math.round(g)   // レインボーLED は 緑・赤・青 の順番でデータを受け取る
         buf[1] = Math.round(r)
         buf[2] = Math.round(b)
-        ws2812b.sendBuffer(buf, ledPin)
+        ws2812b.sendBuffer(buf, pin)
     }
 
     //% blockId=rainbowled_colors block="%c"
@@ -539,19 +540,21 @@ namespace rainbowled {
         return c
     }
 
-    //% blockId=rainbowled_show block="レインボーLEDを %c にする"
+    //% blockId=rainbowled_show block="レインボーLED ピン %pin を %c にする"
+    //% pin.defl=DigitalPin.P4
     //% c.shadow="rainbowled_colors"
     //% weight=100
-    export function showColor(c: number): void {
+    export function showColor(pin: DigitalPin, c: number): void {
         current = c
-        send(c)
+        send(pin, c)
     }
 
-    //% blockId=rainbowled_off block="レインボーLEDを消す"
+    //% blockId=rainbowled_off block="レインボーLED ピン %pin を消す"
+    //% pin.defl=DigitalPin.P4
     //% weight=95
-    export function off(): void {
+    export function off(pin: DigitalPin): void {
         current = 0
-        send(0)
+        send(pin, 0)
     }
 
     //% blockId=rainbowled_brightness block="レインボーLEDの明るさを %value にする"
@@ -559,32 +562,34 @@ namespace rainbowled {
     //% weight=90
     export function setBrightness(value: number): void {
         brightness = Math.constrain(value, 0, 100)
-        send(current)
+        send(lastPin, current)
     }
 
-    //% blockId=rainbowled_blink block="レインボーLEDを %c で %times 回 点めつ"
+    //% blockId=rainbowled_blink block="レインボーLED ピン %pin を %c で %times 回 点めつ"
+    //% pin.defl=DigitalPin.P4
     //% c.shadow="rainbowled_colors"
     //% times.min=1 times.max=20 times.defl=3
     //% weight=85
-    export function blink(c: number, times: number): void {
+    export function blink(pin: DigitalPin, c: number, times: number): void {
         for (let i = 0; i < times; i++) {
-            send(c)
+            send(pin, c)
             basic.pause(300)
-            send(0)
+            send(pin, 0)
             basic.pause(300)
         }
         current = 0
     }
 
-    //% blockId=rainbowled_rainbow block="レインボーLEDをにじ色に変えていく"
+    //% blockId=rainbowled_rainbow block="レインボーLED ピン %pin をにじ色に変えていく"
+    //% pin.defl=DigitalPin.P4
     //% weight=80
-    export function rainbow(): void {
+    export function rainbow(pin: DigitalPin): void {
         for (let h = 0; h < 360; h += 6) {
-            send(hue(h))
+            send(pin, hue(h))
             basic.pause(30)
         }
         current = hue(0)
-        send(current)
+        send(pin, current)
     }
 
     //% blockId=rainbowled_rgb block="赤 %r 緑 %g 青 %b の色"
@@ -609,17 +614,10 @@ namespace rainbowled {
         if (h < 300) return (x << 16) | 255
         return (255 << 16) | (255 - x)
     }
-
-    //% blockId=rainbowled_setup block="レインボーLEDの設定 ピン %pin"
-    //% pin.defl=DigitalPin.P4
-    //% advanced=true
-    export function setup(pin: DigitalPin): void {
-        ledPin = pin
-    }
 }
 
 // ---------------------------------------------------------------------
-// ディスプレイ（OLED）
+// ディスプレイ（OLED）※ I2C でつなぐのでピンの指定はいらない
 // ---------------------------------------------------------------------
 //% weight=8 color=#1c8f99 icon="\uf108" block="ディスプレイ"
 namespace homedisplay {
@@ -699,64 +697,66 @@ namespace homedisplay {
 // ---------------------------------------------------------------------
 //% weight=7 color=#a4161a icon="\uf52b" block="ドア"
 namespace homedoor {
-    let doorPin = AnalogPin.P8      // 初期値：ピン P8
     let openAngle = 90              // 初期値：開いたときの角度
     let closeAngle = 30             // 初期値：閉じたときの角度（ここで閉める強さを調整）
     let angle = -1                  // 今の角度（-1 はまだ動かしていない）
 
-    function write(a: number): void {
+    function write(pin: AnalogPin, a: number): void {
         angle = Math.constrain(a, 0, 180)
-        pins.servoWritePin(doorPin, angle)
+        pins.servoWritePin(pin, angle)
     }
 
-    function slowly(target: number): void {
+    function slowly(pin: AnalogPin, target: number): void {
         if (angle < 0) angle = closeAngle
         const step = target > angle ? 2 : -2
         while (Math.abs(target - angle) > 2) {
-            write(angle + step)
+            write(pin, angle + step)
             basic.pause(20)
         }
-        write(target)
+        write(pin, target)
     }
 
-    //% blockId=door_open block="ドアを開ける"
+    //% blockId=door_open block="ドア ピン %pin を開ける"
+    //% pin.defl=AnalogPin.P8
     //% weight=100
-    export function open(): void {
-        write(openAngle)
+    export function open(pin: AnalogPin): void {
+        write(pin, openAngle)
     }
 
-    //% blockId=door_close block="ドアを閉める"
+    //% blockId=door_close block="ドア ピン %pin を閉める"
+    //% pin.defl=AnalogPin.P8
     //% weight=95
-    export function close(): void {
-        write(closeAngle)
+    export function close(pin: AnalogPin): void {
+        write(pin, closeAngle)
     }
 
-    //% blockId=door_open_slow block="ドアをゆっくり開ける"
+    //% blockId=door_open_slow block="ドア ピン %pin をゆっくり開ける"
+    //% pin.defl=AnalogPin.P8
     //% weight=90
-    export function openSlowly(): void {
-        slowly(openAngle)
+    export function openSlowly(pin: AnalogPin): void {
+        slowly(pin, openAngle)
     }
 
-    //% blockId=door_close_slow block="ドアをゆっくり閉める"
+    //% blockId=door_close_slow block="ドア ピン %pin をゆっくり閉める"
+    //% pin.defl=AnalogPin.P8
     //% weight=85
-    export function closeSlowly(): void {
-        slowly(closeAngle)
+    export function closeSlowly(pin: AnalogPin): void {
+        slowly(pin, closeAngle)
     }
 
-    //% blockId=door_angle block="ドアを %value 度にする"
+    //% blockId=door_angle block="ドア ピン %pin を %value 度にする"
+    //% pin.defl=AnalogPin.P8
     //% value.min=0 value.max=180 value.defl=90
     //% weight=80
-    export function setAngle(value: number): void {
-        write(value)
+    export function setAngle(pin: AnalogPin, value: number): void {
+        write(pin, value)
     }
 
-    //% blockId=door_setup block="ドアの設定 ピン %pin 開く角度 %openA 閉じる角度 %closeA"
-    //% pin.defl=AnalogPin.P8
+    //% blockId=door_setup block="ドアの設定 開く角度 %openA 閉じる角度 %closeA"
     //% openA.min=0 openA.max=180 openA.defl=90
     //% closeA.min=0 closeA.max=180 closeA.defl=30
     //% advanced=true
-    export function setup(pin: AnalogPin, openA: number, closeA: number): void {
-        doorPin = pin
+    export function setup(openA: number, closeA: number): void {
         openAngle = openA
         closeAngle = closeA
     }
@@ -767,34 +767,33 @@ namespace homedoor {
 // ---------------------------------------------------------------------
 //% weight=6 color=#e8590c icon="\uf863" block="ファン"
 namespace homefan {
-    let fanPin = AnalogPin.P9       // 初期値：ピン P9
     let lowValue = 200              // 初期値：弱（0〜1023）
     let middleValue = 500           // 初期値：中
     let highValue = 1023            // 初期値：強
 
-    //% blockId=fan_run block="ファンを %speed で回す"
+    //% blockId=fan_run block="ファン ピン %pin を %speed で回す"
+    //% pin.defl=AnalogPin.P9
     //% weight=100
-    export function run(speed: HomeFanSpeed): void {
+    export function run(pin: AnalogPin, speed: HomeFanSpeed): void {
         let v = highValue
         if (speed == HomeFanSpeed.Low) v = lowValue
         else if (speed == HomeFanSpeed.Middle) v = middleValue
-        pins.analogWritePin(fanPin, v)
+        pins.analogWritePin(pin, v)
     }
 
-    //% blockId=fan_stop block="ファンを止める"
-    //% weight=95
-    export function stop(): void {
-        pins.analogWritePin(fanPin, 0)
-    }
-
-    //% blockId=fan_setup block="ファンの設定 ピン %pin 弱 %low 中 %middle 強 %high"
+    //% blockId=fan_stop block="ファン ピン %pin を止める"
     //% pin.defl=AnalogPin.P9
+    //% weight=95
+    export function stop(pin: AnalogPin): void {
+        pins.analogWritePin(pin, 0)
+    }
+
+    //% blockId=fan_setup block="ファンの設定 弱 %low 中 %middle 強 %high"
     //% low.min=0 low.max=1023 low.defl=200
     //% middle.min=0 middle.max=1023 middle.defl=500
     //% high.min=0 high.max=1023 high.defl=1023
     //% advanced=true
-    export function setup(pin: AnalogPin, low: number, middle: number, high: number): void {
-        fanPin = pin
+    export function setup(low: number, middle: number, high: number): void {
         lowValue = low
         middleValue = middle
         highValue = high
@@ -806,69 +805,73 @@ namespace homefan {
 // ---------------------------------------------------------------------
 //% weight=5 color=#2b8a3e icon="\uf2c9" block="センサー"
 namespace homesensors {
-    let lightPin = AnalogPin.P1     // 初期値：明るさセンサ P1
-    let noisePin = AnalogPin.P2     // 初期値：音センサ P2
-    let tempPin = AnalogPin.P3      // 初期値：温度センサ P3
-    let switchPin = DigitalPin.P16  // 初期値：スイッチ P16
     let darkLevel = 30              // 初期値：明るさがこれより小さいと「暗い」
     let hotLevel = 28               // 初期値：温度がこれより高いと「暑い」
     let noisyLevel = 70             // 初期値：音がこれより大きいと「うるさい」
     let switchStarted = false
 
-    //% blockId=sensors_light block="明るさ"
+    //% blockId=sensors_light block="ピン %pin の明るさ"
+    //% pin.defl=AnalogPin.P1
     //% weight=100
-    export function light(): number {
-        return smarthome.ReadLightIntensity(lightPin)
+    export function light(pin: AnalogPin): number {
+        return smarthome.ReadLightIntensity(pin)
     }
 
-    //% blockId=sensors_temp block="温度"
+    //% blockId=sensors_noise block="ピン %pin の音の大きさ"
+    //% pin.defl=AnalogPin.P2
     //% weight=99
-    export function temperature(): number {
-        led.enable(false)   // P3 は本体の画面と共用なので、画面をオフにしておく
-        return smarthome.ReadTemperature(TMP36Type.TMP36_temperature_C, tempPin)
+    export function noise(pin: AnalogPin): number {
+        return smarthome.ReadNoise(pin)
     }
 
-    //% blockId=sensors_noise block="音の大きさ"
+    //% blockId=sensors_temp block="ピン %pin の温度"
+    //% pin.defl=AnalogPin.P3
     //% weight=98
-    export function noise(): number {
-        return smarthome.ReadNoise(noisePin)
+    export function temperature(pin: AnalogPin): number {
+        led.enable(false)   // P3 は本体の画面と共用なので、画面をオフにしておく
+        return smarthome.ReadTemperature(TMP36Type.TMP36_temperature_C, pin)
     }
 
-    //% blockId=sensors_dark block="暗い？"
+    //% blockId=sensors_dark block="ピン %pin が暗い？"
+    //% pin.defl=AnalogPin.P1
     //% weight=90
-    export function isDark(): boolean {
-        return light() < darkLevel
+    export function isDark(pin: AnalogPin): boolean {
+        return light(pin) < darkLevel
     }
 
-    //% blockId=sensors_hot block="暑い？"
+    //% blockId=sensors_noisy block="ピン %pin がうるさい？"
+    //% pin.defl=AnalogPin.P2
     //% weight=89
-    export function isHot(): boolean {
-        return temperature() > hotLevel
+    export function isNoisy(pin: AnalogPin): boolean {
+        return noise(pin) > noisyLevel
     }
 
-    //% blockId=sensors_noisy block="うるさい？"
+    //% blockId=sensors_hot block="ピン %pin が暑い？"
+    //% pin.defl=AnalogPin.P3
     //% weight=88
-    export function isNoisy(): boolean {
-        return noise() > noisyLevel
+    export function isHot(pin: AnalogPin): boolean {
+        return temperature(pin) > hotLevel
     }
 
-    //% blockId=sensors_switch_is block="スイッチがおされている？"
+    //% blockId=sensors_switch_is block="スイッチ ピン %pin がおされている？"
+    //% pin.defl=DigitalPin.P16
     //% weight=80
-    export function isSwitchPressed(): boolean {
-        pins.setPull(switchPin, PinPullMode.PullUp)
-        return pins.digitalReadPin(switchPin) == 0
+    export function isSwitchPressed(pin: DigitalPin): boolean {
+        pins.setPull(pin, PinPullMode.PullUp)
+        return pins.digitalReadPin(pin) == 0
     }
 
-    //% blockId=sensors_switch_on block="スイッチがおされたとき"
+    //% blockId=sensors_switch_on block="スイッチ ピン %pin がおされたとき"
+    //% pin.defl=DigitalPin.P16
     //% weight=79
-    export function onSwitchPressed(handler: () => void): void {
+    export function onSwitchPressed(pin: DigitalPin, handler: () => void): void {
         if (switchStarted) return
         switchStarted = true
+        pins.setPull(pin, PinPullMode.PullUp)
         control.inBackground(function () {
             let last = 1
             while (true) {
-                pins.setPull(switchPin, PinPullMode.PullUp)
-                const v = pins.digitalReadPin(switchPin)
+                const v = pins.digitalReadPin(pin)
                 if (v == 0 && last == 1) handler()
                 last = v
                 basic.pause(20)
@@ -885,15 +888,5 @@ namespace homesensors {
         darkLevel = dark
         hotLevel = hot
         noisyLevel = noisy
-    }
-
-    //% blockId=sensors_pins block="センサーの設定 明るさ %lp 音 %np 温度 %tp スイッチ %sp"
-    //% lp.defl=AnalogPin.P1 np.defl=AnalogPin.P2 tp.defl=AnalogPin.P3 sp.defl=DigitalPin.P16
-    //% advanced=true
-    export function setup(lp: AnalogPin, np: AnalogPin, tp: AnalogPin, sp: DigitalPin): void {
-        lightPin = lp
-        noisePin = np
-        tempPin = tp
-        switchPin = sp
     }
 }
